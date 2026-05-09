@@ -1,0 +1,1854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>FitQuest — Territory</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<!--
+╔══════════════════════════════════════════════════════════════════╗
+║  FIREBASE SETUP                                                  ║
+║  1. console.firebase.google.com → New project                    ║
+║  2. Auth → Email/Password → Enable                               ║
+║  3. Firestore → Create database (production mode)                ║
+║  4. Project Settings → Web app → Copy config below              ║
+║                                                                  ║
+║  FIRESTORE RULES:                                                ║
+║  rules_version = '2';                                            ║
+║  service cloud.firestore {                                        ║
+║    match /databases/{database}/documents {                       ║
+║      match /users/{uid} {                                        ║
+║        allow read, write: if request.auth.uid == uid;            ║
+║      }                                                           ║
+║      match /tiles/{tileId} {                                     ║
+║        allow read:  if request.auth != null;                     ║
+║        allow write: if request.auth != null;                     ║
+║      }                                                           ║
+║    }                                                             ║
+║  }                                                               ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+/* ── PASTE YOUR FIREBASE CONFIG HERE ── */
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  projectId:         "YOUR_PROJECT",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+</script>
+
+<style>
+:root {
+  --bg:#0a0a0f; --bg2:#111118; --bg3:#1a1a25; --card:#16161f;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.14);
+  --accent:#e8ff47; --a2:#47ffb8; --a3:#ff6b47;
+  --text:#f0f0f5; --muted:#8888a0;
+  --danger:#ff4757; --gold:#ffd700; --purple:#a855f7; --blue:#3b82f6;
+  --fd:'Bebas Neue',sans-serif; --fb:'DM Sans',sans-serif; --fm:'Space Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);}
+
+/* ── SCREEN SYSTEM ── */
+/* The app is a full-height stack. Only one screen is visible at once. */
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .2s;}
+.screen.active{opacity:1;pointer-events:all;}
+
+/* ── LOADING ── */
+#scr-loading{background:var(--bg);align-items:center;justify-content:center;}
+.splash{font-family:var(--fd);font-size:4rem;letter-spacing:4px;
+  background:linear-gradient(135deg,var(--accent),var(--a2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  animation:bth 1.6s ease-in-out infinite;}
+@keyframes bth{0%,100%{opacity:1}50%{opacity:.3}}
+.splash-sub{font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-top:.5rem;}
+
+/* ── AUTH ── */
+#scr-auth{background:var(--bg);align-items:center;justify-content:center;overflow-y:auto;}
+.auth-bg{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 60% 50% at 80% 20%,rgba(232,255,71,.08),transparent 60%),
+             radial-gradient(ellipse 50% 40% at 20% 80%,rgba(71,255,184,.06),transparent 60%);}
+.auth-grid{position:fixed;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size:40px 40px;}
+.auth-box{position:relative;z-index:1;width:min(400px,92vw);background:var(--card);
+  border:1px solid var(--border2);border-radius:20px;padding:2rem 1.75rem;
+  margin:1rem auto;max-height:calc(100vh - 2rem);overflow-y:auto;}
+.logo-text{font-family:var(--fd);font-size:3.2rem;letter-spacing:3px;text-align:center;
+  background:linear-gradient(135deg,var(--accent),var(--a2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.logo-sub{text-align:center;color:var(--muted);font-size:.75rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:1.5rem;}
+
+/* ── VERIFY ── */
+#scr-verify{background:var(--bg);align-items:center;justify-content:center;padding:1.5rem;}
+.verify-box{width:min(400px,92vw);background:var(--card);border:1px solid var(--border2);
+  border-radius:20px;padding:2rem;text-align:center;}
+.verify-box h2{font-family:var(--fd);font-size:1.8rem;letter-spacing:2px;color:var(--accent);margin-bottom:.5rem;}
+.verify-email{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+  padding:.5rem .85rem;font-family:var(--fm);font-size:.8rem;color:var(--a2);
+  margin:.75rem auto;display:inline-block;}
+
+/* ── SHARED FORM COMPONENTS ── */
+.tabs{display:flex;background:var(--bg3);border-radius:10px;padding:3px;gap:3px;margin-bottom:1.1rem;}
+.tb{flex:1;padding:.48rem;background:transparent;border:none;border-radius:8px;
+  color:var(--muted);font-family:var(--fb);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;}
+.tb.on{background:var(--accent);color:#000;}
+.fg{margin-bottom:.8rem;}
+.fg label{display:block;font-size:.68rem;color:var(--muted);margin-bottom:.28rem;letter-spacing:1px;text-transform:uppercase;}
+.fg input,.fg select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;
+  padding:.65rem .9rem;color:var(--text);font-family:var(--fb);font-size:.88rem;
+  outline:none;transition:border-color .2s;-webkit-appearance:none;}
+.fg input:focus,.fg select:focus{border-color:var(--accent);}
+.fg select option{background:var(--bg3);}
+.ferr{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.35);border-radius:8px;
+  padding:.5rem .8rem;font-size:.76rem;color:var(--danger);margin-bottom:.8rem;display:none;line-height:1.5;}
+.ferr.on{display:block;}
+.fok{background:rgba(71,255,184,.08);border:1px solid rgba(71,255,184,.3);border-radius:8px;
+  padding:.5rem .8rem;font-size:.76rem;color:var(--a2);margin-bottom:.8rem;display:none;line-height:1.5;}
+.fok.on{display:block;}
+.btn-p{width:100%;padding:.8rem;background:var(--accent);border:none;border-radius:10px;
+  color:#000;font-family:var(--fb);font-size:.92rem;font-weight:700;cursor:pointer;
+  transition:opacity .15s,transform .15s;margin-top:.35rem;position:relative;}
+.btn-p:hover:not(:disabled){opacity:.88;transform:translateY(-1px);}
+.btn-p:disabled{opacity:.45;cursor:not-allowed;}
+.btn-p .bsp{display:none;width:15px;height:15px;border:2px solid rgba(0,0,0,.25);border-top-color:#000;
+  border-radius:50%;animation:spin .6s linear infinite;margin:0 auto;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-p.ld .bst{display:none;}.btn-p.ld .bsp{display:block;}
+.btn-link{background:none;border:none;color:var(--accent);font-family:var(--fb);
+  font-size:.8rem;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+.forgot-row{text-align:right;margin-top:-.3rem;margin-bottom:.8rem;}
+.fpanel{display:none;}.fpanel.on{display:block;}
+.back-btn{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--muted);
+  cursor:pointer;background:none;border:none;font-family:var(--fb);margin-bottom:.9rem;}
+.back-btn:hover{color:var(--text);}
+
+/* ── APP SHELL ── */
+#scr-app{flex-direction:column;}
+.topnav{height:52px;flex-shrink:0;background:rgba(10,10,15,.96);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);padding:0 1.2rem;
+  display:flex;align-items:center;justify-content:space-between;z-index:50;}
+.nav-logo{font-family:var(--fd);font-size:1.5rem;letter-spacing:2px;
+  background:linear-gradient(135deg,var(--accent),var(--a2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.nav-right{display:flex;align-items:center;gap:.65rem;}
+.nav-av{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--a2));
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:.76rem;color:#000;cursor:pointer;flex-shrink:0;position:relative;}
+.nav-vdot{position:absolute;bottom:-1px;right:-1px;width:9px;height:9px;
+  background:var(--a2);border-radius:50%;border:2px solid var(--bg);display:none;}
+.nav-un{font-size:.82rem;color:var(--muted);}
+
+/* ── PAGE CONTAINER ── */
+/* Each page fills the space between topnav and bottomnav */
+.pages{flex:1;position:relative;overflow:hidden;}
+.page{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:1.1rem 1rem 72px;display:none;}
+.page.on{display:block;}
+
+/* ── BOTTOM NAV ── */
+.bnav{height:60px;flex-shrink:0;background:rgba(10,10,15,.97);backdrop-filter:blur(14px);
+  border-top:1px solid var(--border);display:flex;z-index:50;}
+.bni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  background:transparent;border:none;color:var(--muted);font-family:var(--fb);
+  font-size:.56rem;letter-spacing:.3px;cursor:pointer;transition:color .15s;}
+.bni.on{color:var(--accent);}
+.bni svg{width:19px;height:19px;}
+.bni.walk-live{color:var(--a3);}
+.bni.walk-live svg{animation:npulse 1s ease-in-out infinite;}
+@keyframes npulse{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+
+/* ── SHARED COMPONENTS ── */
+.sec{font-family:var(--fd);font-size:1.25rem;letter-spacing:1px;margin-bottom:.7rem;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1rem;margin-bottom:.85rem;}
+.pbar{height:7px;background:var(--bg3);border-radius:99px;overflow:hidden;}
+.pfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--purple),var(--accent));transition:width .5s;}
+
+/* ── HOME PAGE ── */
+.greet{font-size:.76rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+.hero-name{font-family:var(--fd);font-size:2rem;letter-spacing:1px;line-height:1.1;margin-bottom:1rem;}
+.hero-name span{color:var(--accent);}
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:.85rem;}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.75rem .6rem;text-align:center;}
+.sv{font-family:var(--fd);font-size:1.7rem;letter-spacing:1px;line-height:1;}
+.sl{font-size:.6rem;color:var(--muted);margin-top:.2rem;letter-spacing:1px;text-transform:uppercase;}
+.sv.s{color:var(--a3);}.sv.w{color:var(--a2);}.sv.p{color:var(--purple);}
+.lvlbar{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.85rem;margin-bottom:.85rem;}
+.lvlrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem;}
+.lvlname{font-weight:600;font-size:.86rem;}
+.lvlxp{font-family:var(--fm);font-size:.7rem;color:var(--muted);}
+.big-btn{display:flex;align-items:center;justify-content:center;gap:.65rem;width:100%;
+  padding:.9rem;background:var(--accent);border:none;border-radius:12px;color:#000;
+  font-family:var(--fb);font-size:.95rem;font-weight:700;cursor:pointer;margin-bottom:.85rem;}
+.big-btn:hover{opacity:.9;}
+.ch-card{background:linear-gradient(135deg,rgba(168,85,247,.15),rgba(59,130,246,.1));
+  border:1px solid rgba(168,85,247,.3);border-radius:14px;padding:1rem;margin-bottom:.85rem;}
+.ch-tag{font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--purple);font-weight:600;margin-bottom:.3rem;}
+.ch-title{font-family:var(--fd);font-size:1.35rem;letter-spacing:1px;margin-bottom:.25rem;}
+.ch-desc{font-size:.76rem;color:var(--muted);margin-bottom:.4rem;}
+.ch-reward{display:flex;align-items:center;gap:.35rem;font-size:.76rem;color:var(--gold);font-weight:600;}
+.ch-btn{width:100%;padding:.6rem;background:transparent;border:1px solid var(--purple);
+  border-radius:9px;color:var(--purple);font-family:var(--fb);font-size:.82rem;
+  font-weight:600;cursor:pointer;margin-top:.7rem;transition:background .2s;}
+.ch-btn:hover{background:rgba(168,85,247,.1);}
+.ch-btn:disabled{opacity:.5;cursor:default;}
+.step-card .srow{display:flex;justify-content:space-between;align-items:center;margin-bottom:.65rem;}
+.step-num{font-family:var(--fd);font-size:2.2rem;letter-spacing:2px;color:var(--a2);line-height:1;}
+.badges-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;}
+.bdg{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.75rem .5rem;text-align:center;}
+.bdg.locked{opacity:.3;filter:grayscale(1);}
+.bdg.ok{border-color:var(--gold);background:rgba(255,215,0,.04);}
+.bdg .bi{font-size:1.8rem;}
+.bdg .bn{font-size:.6rem;font-weight:600;margin-top:.2rem;}
+.bdg .bd{font-size:.56rem;color:var(--muted);}
+
+/* ── WORKOUT PAGE ── */
+.wk-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.1rem;margin-bottom:.85rem;}
+.timer{text-align:center;padding:1.2rem 0;}
+.timer .t{font-family:var(--fd);font-size:4.5rem;letter-spacing:3px;color:var(--accent);line-height:1;}
+.timer .ts{font-size:.68rem;color:var(--muted);margin-top:.2rem;}
+.tcrow{display:flex;gap:.65rem;margin-bottom:.85rem;}
+.bg{flex:1;padding:.7rem;background:rgba(71,255,184,.13);border:1px solid rgba(71,255,184,.4);
+  border-radius:11px;color:var(--a2);font-family:var(--fb);font-weight:600;font-size:.86rem;cursor:pointer;transition:background .2s;}
+.bg:hover{background:rgba(71,255,184,.23);}
+.br{flex:1;padding:.7rem;background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.35);
+  border-radius:11px;color:var(--danger);font-family:var(--fb);font-weight:600;font-size:.86rem;cursor:pointer;transition:background .2s;}
+.br:hover{background:rgba(255,71,87,.2);}
+.ex-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem;margin-bottom:.85rem;}
+.ex-card{background:var(--bg3);border:1px solid var(--border);border-radius:11px;
+  padding:.75rem;cursor:pointer;text-align:center;transition:all .18s;}
+.ex-card:hover{border-color:var(--border2);}
+.ex-card.on{border-color:var(--accent);background:rgba(232,255,71,.06);}
+.ex-icon{font-size:1.65rem;margin-bottom:.25rem;}
+.ex-name{font-size:.76rem;font-weight:600;}
+.ex-mus{font-size:.6rem;color:var(--muted);margin-top:.1rem;}
+.rep-box{text-align:center;padding:1.2rem 0;background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:.85rem;}
+.rep-num{font-family:var(--fd);font-size:6.5rem;letter-spacing:3px;color:var(--accent);line-height:1;}
+.rep-lbl{font-size:.75rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:.2rem;}
+.rep-row{display:flex;gap:.65rem;justify-content:center;margin-top:1.1rem;padding:0 1.1rem;}
+.rbtn{flex:1;padding:.85rem;font-family:var(--fd);font-size:1.7rem;letter-spacing:1px;
+  border:none;border-radius:12px;cursor:pointer;transition:transform .12s;}
+.rbtn:active{transform:scale(.94);}
+.rbtn-add{background:var(--accent);color:#000;}
+.rbtn-rst{background:var(--bg3);border:1px solid var(--border2);color:var(--muted);font-size:.9rem;flex:.55;}
+.ac-warn{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);border-radius:9px;
+  padding:.55rem .8rem;font-size:.72rem;color:var(--danger);margin-top:.4rem;display:none;}
+.ac-warn.on{display:block;}
+
+/* ══════════════════════════════════════════════
+   TERRITORY PAGE  ← fully self-contained layout
+   ══════════════════════════════════════════════ */
+#page-territory{
+  /* Override the default .page padding — territory needs all the space */
+  padding:0 !important;
+  display:none;
+  flex-direction:column; /* will use flex when shown */
+  overflow:hidden !important;
+}
+#page-territory.on{
+  display:flex !important;
+}
+
+/* Map fills all space between topnav and bottomnav */
+#tmap{
+  flex:1;
+  width:100%;
+  min-height:0; /* critical for flex child */
+  position:relative;
+  z-index:1;
+}
+
+/* HUD strip sits below map inside the flex column */
+.t-hud{
+  flex-shrink:0;
+  background:rgba(10,10,15,.97);
+  border-top:1px solid var(--border2);
+  padding:.6rem .85rem;
+  z-index:10;
+}
+
+/* Live stats row */
+.hud-stats{
+  display:flex;align-items:center;gap:.5rem;margin-bottom:.55rem;
+  display:none; /* hidden until walk starts */
+}
+.hs{text-align:center;flex:1;}
+.hsv{font-family:var(--fd);font-size:1.3rem;letter-spacing:1px;line-height:1;}
+.hsl{font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.hsv.d{color:var(--a2);}.hsv.t{color:var(--accent);}.hsv.c{color:var(--a3);}
+.hd{width:1px;height:30px;background:var(--border2);flex-shrink:0;}
+
+/* Walk buttons row */
+.hud-btns{display:flex;gap:.6rem;}
+.wb-start{flex:1;padding:.75rem;background:var(--accent);border:none;border-radius:11px;
+  color:#000;font-family:var(--fb);font-weight:700;font-size:.88rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:.45rem;}
+.wb-start:hover{opacity:.9;}
+.wb-stop{flex:1;padding:.75rem;background:rgba(255,71,87,.13);border:1px solid rgba(255,71,87,.45);
+  border-radius:11px;color:var(--danger);font-family:var(--fb);font-weight:700;font-size:.88rem;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.45rem;
+  display:none;}
+.wb-stop:hover{background:rgba(255,71,87,.22);}
+
+/* GPS error bar */
+.gps-err{background:rgba(255,71,87,.14);border:1px solid rgba(255,71,87,.4);
+  border-radius:9px;padding:.5rem .8rem;font-size:.76rem;color:var(--danger);
+  text-align:center;margin-bottom:.55rem;display:none;}
+.gps-err.on{display:block;}
+
+/* Slide-up info panel */
+.t-panel{
+  position:absolute; /* relative to #page-territory */
+  left:0;right:0;bottom:0;
+  z-index:20;
+  background:rgba(10,10,15,.97);backdrop-filter:blur(14px);
+  border-top:1px solid var(--border2);border-radius:18px 18px 0 0;
+  padding:.7rem .9rem .8rem;
+  transform:translateY(100%);
+  transition:transform .32s cubic-bezier(.34,1.56,.64,1);
+  max-height:55%;overflow-y:auto;
+  pointer-events:none;
+}
+.t-panel.open{transform:translateY(0);pointer-events:all;}
+.panel-handle{width:34px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto .75rem;}
+
+/* Panel open button (floats on map) */
+.panel-fab{
+  position:absolute;
+  bottom:.75rem;right:.75rem;
+  width:42px;height:42px;border-radius:50%;
+  background:var(--card);border:1px solid var(--border2);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:1.15rem;z-index:15;transition:transform .3s;
+  box-shadow:0 4px 12px rgba(0,0,0,.4);
+}
+.panel-fab.rotated{transform:rotate(180deg);}
+
+/* Leaderboard */
+.lb-list{display:flex;flex-direction:column;gap:.45rem;}
+.lb-row{display:flex;align-items:center;gap:.65rem;padding:.6rem .8rem;
+  background:var(--bg3);border:1px solid var(--border);border-radius:11px;}
+.lb-rank{font-family:var(--fd);font-size:1.2rem;color:var(--muted);width:26px;text-align:center;flex-shrink:0;}
+.lb-rank.g{color:var(--gold);}.lb-rank.s{color:#c0c0c0;}.lb-rank.b{color:#cd7f32;}
+.lb-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+.lb-name{flex:1;font-size:.84rem;font-weight:600;}
+.lb-name.me{color:var(--accent);}
+.lb-stat{text-align:right;}
+.lb-tiles{font-family:var(--fm);font-size:.72rem;color:var(--text);}
+.lb-km{font-family:var(--fm);font-size:.64rem;color:var(--muted);}
+
+/* PROGRESS PAGE */
+.pg-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.65rem;margin-bottom:.85rem;}
+.pgc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.85rem;}
+.pgv{font-family:var(--fd);font-size:1.9rem;letter-spacing:1px;line-height:1;}
+.pgl{font-size:.66rem;color:var(--muted);margin-top:.2rem;letter-spacing:1px;text-transform:uppercase;}
+.pgch{font-size:.68rem;font-weight:600;margin-top:.25rem;color:var(--a2);}
+.wkch{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.85rem;margin-bottom:.85rem;}
+.bars{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:.65rem;}
+.bw{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:3px;}
+.bbar{width:100%;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--a2),rgba(71,255,184,.25));transition:height .4s;min-height:2px;}
+.bbar.td{background:linear-gradient(180deg,var(--accent),rgba(232,255,71,.25));}
+.blbl{font-size:.56rem;color:var(--muted);}
+
+/* PROFILE PAGE */
+.ai-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.85rem;margin-bottom:.85rem;}
+.ai-row{display:flex;justify-content:space-between;align-items:center;padding:.45rem 0;border-bottom:1px solid var(--border);font-size:.8rem;}
+.ai-row:last-child{border-bottom:none;}
+.ai-k{color:var(--muted);}
+.ai-v{font-family:var(--fm);font-size:.72rem;}
+.ai-v.ok{color:var(--a2);}.ai-v.no{color:var(--danger);}
+.pl-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.1rem;margin-bottom:.85rem;}
+.pl-card h3{font-family:var(--fd);font-size:1.2rem;letter-spacing:1px;margin-bottom:.85rem;}
+.pl-opt{display:flex;align-items:center;gap:.65rem;padding:.6rem .8rem;background:var(--bg3);
+  border:1px solid var(--border);border-radius:9px;margin-bottom:.4rem;cursor:pointer;transition:all .18s;}
+.pl-opt.on{border-color:var(--accent);background:rgba(232,255,71,.04);}
+.dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted);flex-shrink:0;transition:all .18s;}
+.pl-opt.on .dot{background:var(--accent);border-color:var(--accent);}
+.gen-btn{width:100%;padding:.8rem;background:linear-gradient(135deg,var(--purple),var(--blue));
+  border:none;border-radius:11px;color:#fff;font-family:var(--fb);font-weight:700;font-size:.9rem;cursor:pointer;margin-top:.4rem;}
+.gen-plan{background:var(--bg3);border:1px solid var(--border2);border-radius:11px;
+  padding:.85rem;margin-top:.85rem;font-size:.82rem;line-height:1.7;display:none;}
+.gen-plan.on{display:block;}
+.gen-plan h4{color:var(--accent);font-family:var(--fd);font-size:1rem;margin-bottom:.4rem;}
+.tog-wrap{display:flex;justify-content:space-between;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--border);}
+.tog-wrap:last-child{border-bottom:none;}
+.tog-label{font-size:.82rem;}
+.tog{position:relative;width:42px;height:22px;flex-shrink:0;}
+.tog input{opacity:0;width:0;height:0;}
+.tog-track{position:absolute;inset:0;background:var(--bg3);border:1px solid var(--border2);border-radius:99px;cursor:pointer;transition:all .2s;}
+.tog-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;background:var(--muted);border-radius:50%;transition:all .2s;}
+
+/* MODALS */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);
+  z-index:200;display:none;align-items:center;justify-content:center;padding:1rem;}
+.modal.open{display:flex;}
+.mbox{background:var(--card);border:1px solid var(--border2);border-radius:18px;
+  padding:1.6rem 1.4rem;width:min(370px,100%);text-align:center;}
+.mbox h2{font-family:var(--fd);font-size:1.9rem;letter-spacing:2px;color:var(--accent);margin-bottom:.4rem;}
+.sum-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin:1.1rem 0;}
+.sg{background:var(--bg3);border-radius:9px;padding:.7rem .4rem;}
+.sg .sv2{font-family:var(--fd);font-size:1.5rem;letter-spacing:1px;}
+.sg .sl2{font-size:.58rem;color:var(--muted);margin-top:.1rem;}
+.xp-row{background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.3);
+  border-radius:9px;padding:.65rem;margin-bottom:.85rem;font-size:.86rem;font-weight:600;color:var(--purple);}
+.mclose{width:100%;padding:.75rem;background:var(--accent);border:none;border-radius:9px;
+  color:#000;font-weight:700;font-size:.9rem;cursor:pointer;font-family:var(--fb);}
+
+/* Walk summary extras */
+.ter-sum{display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem;margin:.85rem 0;}
+.tsc{background:var(--bg3);border-radius:11px;padding:.75rem;text-align:center;}
+.tsv{font-family:var(--fd);font-size:1.65rem;letter-spacing:1px;line-height:1;}
+.tsl{font-size:.6rem;color:var(--muted);margin-top:.15rem;}
+.ev-list{text-align:left;margin:.85rem 0;max-height:110px;overflow-y:auto;}
+.ev-item{display:flex;align-items:center;gap:.45rem;padding:.38rem .55rem;
+  background:var(--bg3);border-radius:7px;margin-bottom:.28rem;font-size:.75rem;}
+.ei-ico{font-size:.9rem;flex-shrink:0;}
+.ei-txt{flex:1;}
+.ei-xp{font-family:var(--fm);font-size:.66rem;color:var(--purple);font-weight:600;flex-shrink:0;}
+
+/* TOAST */
+.toast{position:fixed;top:1rem;left:50%;transform:translateX(-50%) translateY(-80px);
+  background:var(--card);border:1px solid var(--border2);border-radius:11px;
+  padding:.7rem 1.1rem;font-size:.82rem;font-weight:500;z-index:500;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;max-width:90vw;}
+.toast.on{transform:translateX(-50%) translateY(0);}
+
+/* Leaflet overrides */
+.leaflet-popup-content-wrapper{background:var(--card)!important;border:1px solid var(--border2)!important;
+  border-radius:11px!important;color:var(--text)!important;font-family:var(--fb)!important;box-shadow:0 4px 20px rgba(0,0,0,.5)!important;}
+.leaflet-popup-content{margin:0!important;padding:.75rem .9rem!important;min-width:150px!important;font-size:.82rem!important;}
+.leaflet-popup-tip{background:var(--card)!important;}
+.leaflet-popup-close-button{color:var(--muted)!important;font-size:1rem!important;top:5px!important;right:7px!important;}
+.leaflet-control-zoom a{background:var(--card)!important;color:var(--text)!important;border:none!important;}
+.leaflet-bar{background:transparent!important;border:1px solid var(--border2)!important;border-radius:9px!important;overflow:hidden!important;box-shadow:none!important;}
+.tile-pop-name{font-weight:700;margin-bottom:.2rem;}
+.tile-pop-row{display:flex;justify-content:space-between;margin-top:.25rem;font-size:.76rem;}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<!-- ══════ LOADING ══════ -->
+<div id="scr-loading" class="screen active">
+  <div class="splash">FITQUEST</div>
+  <div class="splash-sub">Connecting...</div>
+</div>
+
+<!-- ══════ AUTH ══════ -->
+<div id="scr-auth" class="screen">
+  <div class="auth-bg"></div>
+  <div class="auth-grid"></div>
+  <div class="auth-box">
+    <div class="logo-text">FITQUEST</div>
+    <div class="logo-sub">Level up your body</div>
+
+    <!-- Auth tabs: only for login/signup -->
+    <div class="tabs" id="auth-tabs">
+      <button class="tb on" onclick="authTab('login')">Login</button>
+      <button class="tb"    onclick="authTab('signup')">Sign Up</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="fp-login" class="fpanel on">
+      <div class="ferr" id="err-login"></div>
+      <div class="fg"><label>Email</label><input type="email" id="f-lemail" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="fg"><label>Password</label><input type="password" id="f-lpass" placeholder="••••••••" autocomplete="current-password"></div>
+      <div class="forgot-row"><button class="btn-link" onclick="authTab('forgot')">Forgot password?</button></div>
+      <button class="btn-p" id="btn-login" onclick="doLogin()"><span class="bst">Log In</span><div class="bsp"></div></button>
+    </div>
+
+    <!-- SIGNUP -->
+    <div id="fp-signup" class="fpanel">
+      <div class="ferr" id="err-signup"></div>
+      <div class="fok"  id="ok-signup"></div>
+      <div class="fg"><label>Full Name</label><input type="text" id="f-sname" placeholder="Your name" autocomplete="name"></div>
+      <div class="fg"><label>Email</label><input type="email" id="f-semail" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="fg"><label>Password <span style="font-size:.62rem;color:var(--muted)">(min 6 chars)</span></label><input type="password" id="f-spass" placeholder="••••••••" autocomplete="new-password"></div>
+      <div class="fg"><label>Goal</label>
+        <select id="f-sgoal"><option value="">Select goal...</option><option value="weight_loss">Weight Loss</option><option value="muscle">Build Muscle</option><option value="endurance">Endurance</option><option value="flexibility">Flexibility</option><option value="general">General Fitness</option></select>
+      </div>
+      <div class="fg"><label>Level</label>
+        <select id="f-slevel"><option value="">Select level...</option><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select>
+      </div>
+      <button class="btn-p" id="btn-signup" onclick="doSignup()"><span class="bst">Create Account</span><div class="bsp"></div></button>
+    </div>
+
+    <!-- FORGOT -->
+    <div id="fp-forgot" class="fpanel">
+      <button class="back-btn" onclick="authTab('login')">← Back to Login</button>
+      <div class="ferr" id="err-forgot"></div>
+      <div class="fok"  id="ok-forgot"></div>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:.85rem;line-height:1.6;">Enter your email to receive a password reset link.</p>
+      <div class="fg"><label>Email</label><input type="email" id="f-femail" placeholder="you@example.com"></div>
+      <button class="btn-p" id="btn-forgot" onclick="doForgotPw()"><span class="bst">Send Reset Email</span><div class="bsp"></div></button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ VERIFY ══════ -->
+<div id="scr-verify" class="screen">
+  <div class="verify-box">
+    <div style="font-size:3rem;margin-bottom:.75rem;">📬</div>
+    <h2>Verify Your Email</h2>
+    <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">We've sent a verification link to:</p>
+    <div class="verify-email" id="verify-addr">—</div>
+    <p style="font-size:.8rem;color:var(--muted);line-height:1.6;margin-bottom:1.1rem;">Open the email, click the link, then come back.</p>
+    <button class="btn-p" id="btn-verify" onclick="checkVerify()" style="margin-bottom:.65rem;"><span class="bst">I've Verified — Continue</span><div class="bsp"></div></button>
+    <button class="btn-link" id="btn-resend" onclick="resendVerify()">Resend verification email</button>
+    <div style="margin-top:.85rem;"><button class="btn-link" style="color:var(--muted);font-size:.72rem;" onclick="doLogout()">Sign out</button></div>
+  </div>
+</div>
+
+<!-- ══════ MAIN APP ══════ -->
+<div id="scr-app" class="screen">
+
+  <!-- TOP NAV -->
+  <nav class="topnav">
+    <div class="nav-logo">FITQUEST</div>
+    <div class="nav-right">
+      <span class="nav-un" id="nav-un"></span>
+      <div class="nav-av" id="nav-av" onclick="navTo('profile')" title="Profile">
+        <span id="nav-initials">—</span>
+        <div class="nav-vdot" id="nav-vdot"></div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- PAGES -->
+  <div class="pages">
+
+    <!-- HOME -->
+    <div class="page on" id="page-home">
+      <div class="greet">GOOD DAY,</div>
+      <div class="hero-name" id="hero-name">CHAMPION <span>💪</span></div>
+      <div class="stats3">
+        <div class="sc"><div class="sv s" id="s-streak">0🔥</div><div class="sl">Streak</div></div>
+        <div class="sc"><div class="sv w" id="s-wk">0</div><div class="sl">Workouts</div></div>
+        <div class="sc"><div class="sv p" id="s-xp">0</div><div class="sl">XP</div></div>
+      </div>
+      <div class="lvlbar">
+        <div class="lvlrow"><span class="lvlname" id="lvl-name">Level 1 — Rookie</span><span class="lvlxp" id="lvl-xp">0 / 100 XP</span></div>
+        <div class="pbar"><div class="pfill" id="lvl-fill" style="width:0%"></div></div>
+      </div>
+      <!-- Territory snippet -->
+      <div class="card" style="display:flex;align-items:center;gap:.9rem;cursor:pointer;" onclick="navTo('territory')">
+        <div style="font-size:1.9rem;">🗺️</div>
+        <div style="flex:1">
+          <div style="font-family:var(--fd);font-size:1rem;letter-spacing:1px;">MY TERRITORY</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:.12rem;"><span id="h-tiles" style="color:var(--accent);font-weight:700;">0</span> tiles · <span id="h-km" style="color:var(--a2);font-weight:700;">0.0</span> km walked</div>
+        </div>
+        <div style="color:var(--muted);font-size:1.1rem;">›</div>
+      </div>
+      <!-- Steps -->
+      <div class="card step-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;">
+          <span style="font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">STEPS TODAY</span>
+          <span id="step-status" style="font-size:.67rem;color:var(--a2);">—</span>
+        </div>
+        <div class="srow">
+          <div class="step-num" id="step-count">0</div>
+          <div style="text-align:right"><div style="font-size:.66rem;color:var(--muted);">Goal</div><div style="font-family:var(--fd);font-size:1.1rem;color:var(--muted);">10,000</div></div>
+        </div>
+        <div class="pbar"><div class="pfill" id="step-fill" style="width:0%;background:linear-gradient(90deg,var(--a2),var(--accent))"></div></div>
+        <div style="margin-top:.4rem;font-size:.68rem;color:var(--muted);" id="step-msg">Walk to count steps</div>
+      </div>
+      <!-- Daily Challenge -->
+      <div class="ch-card">
+        <div class="ch-tag">⚡ DAILY CHALLENGE</div>
+        <div class="ch-title" id="ch-title">Loading...</div>
+        <div class="ch-desc"  id="ch-desc"></div>
+        <div class="ch-reward"><span>★</span><span id="ch-reward">+50 XP</span></div>
+        <button class="ch-btn" id="ch-btn" onclick="completeChallenge()">Mark Complete</button>
+      </div>
+      <button class="big-btn" onclick="navTo('workout')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        START WORKOUT
+      </button>
+      <div class="sec">ACHIEVEMENTS</div>
+      <div class="badges-grid" id="badges-home"></div>
+    </div>
+
+    <!-- WORKOUT -->
+    <div class="page" id="page-workout">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.65rem;">
+        <div class="sec" style="margin:0">WORKOUT SESSION</div>
+        <div style="display:flex;align-items:center;gap:.3rem;font-size:.62rem;color:var(--muted);letter-spacing:1px;">
+          <div style="width:5px;height:5px;border-radius:50%;background:var(--a2);animation:syncpulse 2s ease-in-out infinite;"></div>SYNCING
+        </div>
+      </div>
+      @keyframes syncpulse{0%,100%{opacity:1}50%{opacity:.3}}
+      <div class="wk-panel">
+        <div style="font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:.4rem;">SESSION TIMER</div>
+        <div class="timer"><div class="t" id="wk-timer">00:00</div><div class="ts" id="wk-ts">Ready to start</div></div>
+        <div class="tcrow">
+          <button class="bg" id="btn-timer-start" onclick="timerStart()">▶ Start</button>
+          <button class="br" onclick="endWorkout()">■ End Workout</button>
+        </div>
+      </div>
+      <div class="sec">SELECT EXERCISE</div>
+      <div class="ex-grid" id="ex-grid"></div>
+      <div class="sec">REP COUNTER</div>
+      <div class="rep-box">
+        <div class="rep-num" id="rep-num">0</div>
+        <div class="rep-lbl" id="rep-lbl">SELECT AN EXERCISE</div>
+        <div class="rep-row">
+          <button class="rbtn rbtn-rst" onclick="resetReps()">Reset</button>
+          <button class="rbtn rbtn-add" onclick="addRep()">+1</button>
+        </div>
+      </div>
+      <div class="ac-warn" id="ac-warn">⚠️ Too fast! Count reps naturally.</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════
+         TERRITORY  — flex column layout
+         ═══════════════════════════════════════════════ -->
+    <div class="page" id="page-territory">
+
+      <!-- Map (flex:1, fills remaining space) -->
+      <div id="tmap"></div>
+
+      <!-- HUD strip (flex-shrink:0, always at bottom of flex column) -->
+      <div class="t-hud">
+        <div class="gps-err" id="gps-err">📍 GPS unavailable — enable location access</div>
+        <div class="hud-stats" id="hud-stats">
+          <div class="hs"><div class="hsv d" id="hud-m">0</div><div class="hsl">Meters</div></div>
+          <div class="hd"></div>
+          <div class="hs"><div class="hsv t" id="hud-tiles">0</div><div class="hsl">Visited</div></div>
+          <div class="hd"></div>
+          <div class="hs"><div class="hsv c" id="hud-cap">0</div><div class="hsl">Eligible</div></div>
+          <div class="hd"></div>
+          <div class="hs"><div class="hsv" id="hud-spd" style="color:var(--muted)">0.0</div><div class="hsl">km/h</div></div>
+        </div>
+        <div class="hud-btns">
+          <button class="wb-start" id="wb-start" onclick="startWalk()">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+            Start Walk &amp; Capture
+          </button>
+          <button class="wb-stop" id="wb-stop" onclick="stopWalk(false)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            End Walk &amp; Claim
+          </button>
+        </div>
+      </div>
+
+      <!-- Floating trophy button (position:absolute inside page-territory) -->
+      <button class="panel-fab" id="panel-fab" onclick="togglePanel()">🏆</button>
+
+      <!-- Slide-up info panel (position:absolute inside page-territory) -->
+      <div class="t-panel" id="t-panel">
+        <div class="panel-handle"></div>
+        <!-- Panel-specific tabs (scoped IDs, NOT .tabs class to avoid selector collision) -->
+        <div style="display:flex;gap:.45rem;margin-bottom:.85rem;">
+          <button id="ptb-lb"   onclick="panelTab('lb')"   style="flex:1;padding:.42rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-family:var(--fb);font-size:.76rem;font-weight:600;cursor:pointer;">🏆 Leaderboard</button>
+          <button id="ptb-mine" onclick="panelTab('mine')" style="flex:1;padding:.42rem;background:var(--bg3);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:var(--fb);font-size:.76rem;font-weight:600;cursor:pointer;">📍 My Tiles</button>
+        </div>
+        <!-- Leaderboard -->
+        <div id="pp-lb">
+          <div style="font-size:.67rem;color:var(--muted);margin-bottom:.55rem;">Global ranking · live</div>
+          <div class="lb-list" id="lb-list"><div style="text-align:center;color:var(--muted);font-size:.78rem;padding:.85rem">Loading...</div></div>
+        </div>
+        <!-- My tiles -->
+        <div id="pp-mine" style="display:none">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:.75rem;">
+            <div class="tsc"><div class="tsv" id="my-cnt" style="color:var(--accent)">0</div><div class="tsl">Tiles</div></div>
+            <div class="tsc"><div class="tsv" id="my-km"  style="color:var(--a2)">0.0</div><div class="tsl">km</div></div>
+            <div class="tsc"><div class="tsv" id="my-cq"  style="color:var(--a3)">0</div><div class="tsl">Conquests</div></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--muted);margin-bottom:.4rem;">Tiles you lost recently:</div>
+          <div id="contested-list"><div style="color:var(--muted);font-size:.75rem;">None — safe 🛡️</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="page" id="page-progress">
+      <div class="sec">YOUR PROGRESS</div>
+      <div class="pg-grid">
+        <div class="pgc"><div class="pgv" id="pg-wk"  style="color:var(--a2)">0</div><div class="pgl">Total Workouts</div><div class="pgch" id="pg-str">🔥 0 day streak</div></div>
+        <div class="pgc"><div class="pgv" id="pg-bst" style="color:var(--a3)">0</div><div class="pgl">Best Streak</div><div class="pgch">Days</div></div>
+        <div class="pgc"><div class="pgv" id="pg-rep" style="color:var(--purple)">0</div><div class="pgl">Total Reps</div><div class="pgch">All time</div></div>
+        <div class="pgc"><div class="pgv" id="pg-cal" style="color:var(--gold)">0</div><div class="pgl">Calories</div><div class="pgch">Est. kcal</div></div>
+      </div>
+      <div class="wkch">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span class="sec" style="margin:0;font-size:.95rem">WEEKLY WORKOUTS</span>
+          <span style="font-size:.66rem;color:var(--muted)">This week</span>
+        </div>
+        <div class="bars" id="week-bars"></div>
+      </div>
+      <div class="sec">EXERCISE BREAKDOWN</div>
+      <div id="ex-break" style="margin-bottom:.85rem"></div>
+      <div class="sec">BADGES</div>
+      <div class="badges-grid" id="badges-prog"></div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="page" id="page-profile">
+      <div class="sec">ACCOUNT</div>
+      <div class="ai-card">
+        <div class="ai-row"><span class="ai-k">Name</span><span class="ai-v" id="ai-name">—</span></div>
+        <div class="ai-row"><span class="ai-k">Email</span><span class="ai-v" id="ai-email" style="font-size:.66rem">—</span></div>
+        <div class="ai-row"><span class="ai-k">Email Status</span><span class="ai-v" id="ai-ver">—</span></div>
+        <div class="ai-row"><span class="ai-k">Joined</span><span class="ai-v" id="ai-joined">—</span></div>
+        <div class="ai-row"><span class="ai-k">Last Login</span><span class="ai-v" id="ai-last">—</span></div>
+      </div>
+      <div class="sec">PERSONALIZE</div>
+      <div class="pl-card">
+        <h3>🎯 GOAL</h3>
+        <div id="goal-opts">
+          <div class="pl-opt on" onclick="selOpt('goal','weight_loss',this)"><div class="dot"></div><span>🔥 Weight Loss</span></div>
+          <div class="pl-opt"    onclick="selOpt('goal','muscle',this)">    <div class="dot"></div><span>💪 Build Muscle</span></div>
+          <div class="pl-opt"    onclick="selOpt('goal','endurance',this)"> <div class="dot"></div><span>🏃 Endurance</span></div>
+          <div class="pl-opt"    onclick="selOpt('goal','flexibility',this)"><div class="dot"></div><span>🧘 Flexibility</span></div>
+          <div class="pl-opt"    onclick="selOpt('goal','general',this)">   <div class="dot"></div><span>⚡ General Fitness</span></div>
+        </div>
+      </div>
+      <div class="pl-card">
+        <h3>📊 FITNESS LEVEL</h3>
+        <div id="lvl-opts">
+          <div class="pl-opt on" onclick="selOpt('flevel','beginner',this)">    <div class="dot"></div><span>🌱 Beginner</span></div>
+          <div class="pl-opt"    onclick="selOpt('flevel','intermediate',this)"><div class="dot"></div><span>🌿 Intermediate</span></div>
+          <div class="pl-opt"    onclick="selOpt('flevel','advanced',this)">    <div class="dot"></div><span>🌳 Advanced</span></div>
+        </div>
+      </div>
+      <button class="gen-btn" onclick="genPlan()">✨ Generate Custom Plan</button>
+      <div class="gen-plan" id="gen-plan"></div>
+      <div class="pl-card" style="margin-top:.85rem">
+        <h3>🔔 REMINDERS</h3>
+        <div class="tog-wrap">
+          <span class="tog-label">Workout Reminder</span>
+          <label class="tog"><input type="checkbox" id="rem-wk" onchange="togReminder('wk')">
+            <div class="tog-track" id="trt-wk"></div><div class="tog-thumb" id="tth-wk"></div></label>
+        </div>
+        <div class="tog-wrap">
+          <span class="tog-label">Streak Warning</span>
+          <label class="tog"><input type="checkbox" id="rem-st" onchange="togReminder('st')">
+            <div class="tog-track" id="trt-st"></div><div class="tog-thumb" id="tth-st"></div></label>
+        </div>
+      </div>
+      <button class="br" style="width:100%;border-radius:11px;padding:.8rem;font-size:.88rem;font-weight:600;border:none;" onclick="doLogout()">Sign Out</button>
+    </div>
+
+  </div><!-- /.pages -->
+
+  <!-- BOTTOM NAV -->
+  <nav class="bnav">
+    <button class="bni on"  id="bni-home"      onclick="navTo('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home
+    </button>
+    <button class="bni"     id="bni-workout"   onclick="navTo('workout')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v16M18 4v16M2 12h4M18 12h4"/></svg>Workout
+    </button>
+    <button class="bni"     id="bni-territory" onclick="navTo('territory')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>Territory
+    </button>
+    <button class="bni"     id="bni-progress"  onclick="navTo('progress')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Progress
+    </button>
+    <button class="bni"     id="bni-profile"   onclick="navTo('profile')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Profile
+    </button>
+  </nav>
+</div>
+
+<!-- Workout Summary Modal -->
+<div class="modal" id="modal-wk">
+  <div class="mbox">
+    <div style="font-size:2.2rem;margin-bottom:.4rem">🏆</div>
+    <h2>WORKOUT DONE!</h2>
+    <p style="font-size:.76rem;color:var(--muted);margin-bottom:.4rem">Great session!</p>
+    <div class="sum-grid">
+      <div class="sg"><div class="sv2" id="ms-time" style="color:var(--accent)">0:00</div><div class="sl2">Duration</div></div>
+      <div class="sg"><div class="sv2" id="ms-reps" style="color:var(--a2)">0</div><div class="sl2">Reps</div></div>
+      <div class="sg"><div class="sv2" id="ms-cal"  style="color:var(--gold)">0</div><div class="sl2">Calories</div></div>
+    </div>
+    <div class="xp-row" id="ms-xp">+0 XP</div>
+    <button class="mclose" onclick="closeMod('modal-wk');navTo('home')">Continue</button>
+  </div>
+</div>
+
+<!-- Walk / Territory Summary Modal -->
+<div class="modal" id="modal-walk">
+  <div class="mbox">
+    <div style="font-size:2.2rem;margin-bottom:.4rem">🗺️</div>
+    <h2>WALK COMPLETE!</h2>
+    <div class="ter-sum">
+      <div class="tsc"><div class="tsv" id="ws-m"  style="color:var(--a2)">0</div><div class="tsl">Meters</div></div>
+      <div class="tsc"><div class="tsv" id="ws-new" style="color:var(--accent)">0</div><div class="tsl">New Tiles</div></div>
+      <div class="tsc"><div class="tsv" id="ws-cq" style="color:var(--a3)">0</div><div class="tsl">Conquered</div></div>
+      <div class="tsc"><div class="tsv" id="ws-df" style="color:var(--purple)">0</div><div class="tsl">Defended</div></div>
+    </div>
+    <div class="ev-list" id="ev-list"></div>
+    <div class="xp-row" id="ws-xp">+0 XP from territory!</div>
+    <button class="mclose" onclick="closeMod('modal-walk')">View Map</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── CONSTANTS ─────────────────────────────── */
+const LEVELS=[
+  {n:'Rookie',x:0},{n:'Beginner',x:100},{n:'Fighter',x:250},{n:'Warrior',x:500},
+  {n:'Elite',x:900},{n:'Champion',x:1400},{n:'Legend',x:2000},
+  {n:'Master',x:3000},{n:'Grandmaster',x:4500},{n:'God Mode',x:7000}
+];
+const EXERCISES=[
+  {id:'pushup',    n:'Push-ups',     m:'Chest/Arms',  ic:'💪',c:.5},
+  {id:'squat',     n:'Squats',       m:'Legs/Glutes', ic:'🦵',c:.4},
+  {id:'situp',     n:'Sit-ups',      m:'Core',        ic:'🏋',c:.3},
+  {id:'pullup',    n:'Pull-ups',     m:'Back/Biceps', ic:'🤸',c:.6},
+  {id:'lunge',     n:'Lunges',       m:'Legs',        ic:'🦿',c:.35},
+  {id:'burpee',    n:'Burpees',      m:'Full Body',   ic:'⚡',c:.9},
+  {id:'plank',     n:'Plank',        m:'Core',        ic:'🧘',c:.2},
+  {id:'jumpjack',  n:'Jumping Jacks',m:'Cardio',      ic:'🏃',c:.4}
+];
+const BADGES=[
+  {id:'f1', ic:'🎯',n:'First Blood',  d:'Complete 1st workout',  r:u=>u.workouts>=1},
+  {id:'w5', ic:'🔥',n:'On Fire',      d:'5 workouts done',       r:u=>u.workouts>=5},
+  {id:'w10',ic:'💥',n:'Dedicated',    d:'10 workouts done',      r:u=>u.workouts>=10},
+  {id:'s3', ic:'⚡',n:'3-Day Streak', d:'3 days in a row',       r:u=>u.bestStreak>=3},
+  {id:'s7', ic:'🌟',n:'Streak Master',d:'7-day streak',          r:u=>u.bestStreak>=7},
+  {id:'r1', ic:'💯',n:'Centurion',    d:'100 total reps',        r:u=>u.totalReps>=100},
+  {id:'r5', ic:'🏆',n:'Rep Monster',  d:'500 total reps',        r:u=>u.totalReps>=500},
+  {id:'t1', ic:'🗺️',n:'First Tile',   d:'Capture 1st map tile',  r:u=>(u.tilesOwned||0)>=1},
+  {id:'t10',ic:'🏙️',n:'Neighborhood', d:'Own 10 tiles',          r:u=>(u.tilesOwned||0)>=10},
+  {id:'t50',ic:'🌆',n:'District',     d:'Own 50 tiles',          r:u=>(u.tilesOwned||0)>=50},
+  {id:'c1', ic:'⚔️',n:'Conqueror',    d:'Steal 1st tile',        r:u=>(u.conquests||0)>=1},
+  {id:'c10',ic:'🗡️',n:'Warlord',      d:'Conquer 10 tiles',      r:u=>(u.conquests||0)>=10},
+  {id:'k5', ic:'🥾',n:'5km Walker',   d:'Walk 5km total',        r:u=>(u.totalWalkM||0)>=5000},
+  {id:'k20',ic:'🚶',n:'20km Veteran', d:'Walk 20km total',       r:u=>(u.totalWalkM||0)>=20000},
+];
+const CHALLENGES=[
+  {t:'50 Push-ups',    d:'Complete 50 push-ups today',          r:60},
+  {t:'100 Squats',     d:'100 squats — break into sets',        r:70},
+  {t:'5-Min Plank',    d:'Hold plank for 5 total minutes',      r:80},
+  {t:'200 Jumping Jacks',d:'Get the heart pumping!',            r:50},
+  {t:'Capture 5 Tiles',d:'Walk & capture 5 map tiles',          r:75},
+  {t:'Walk 500m',      d:'Walk a continuous 500 meters outside',r:55},
+  {t:'Burpee Blitz: 30',d:'Full-body burn — no stopping!',      r:100},
+  {t:'Core Circuit',   d:'50 sit-ups + 50 leg raises + 2-min plank',r:85},
+];
+const PLANS={
+  weight_loss:{
+    beginner:    ['Mon: 30min walk + 20 squats + 10 pushups','Tue: Rest','Wed: Jumping jacks × 5 + 15 sit-ups','Thu: 30min brisk walk','Fri: 3×15 squats + 3×10 pushups','Sat: Light stretch','Sun: Rest'],
+    intermediate:['Mon: 4×20 squats + 4×15 pushups + 20 burpees','Tue: 40min run','Wed: HIIT 30s/15s × 8','Thu: 30min swim','Fri: Circuit 45min','Sat: 5km jog','Sun: Rest'],
+    advanced:    ['Mon: 5×25 burpees + 5×20 pullups','Tue: 60min run + core','Wed: Heavy compounds','Thu: HIIT + sprints','Fri: Full body strength','Sat: 10km run','Sun: Active recovery']
+  },
+  muscle:{
+    beginner:    ['Mon: 3×10 pushups + 3×12 squats','Tue: Rest','Wed: 3×8 pullups + 3×15 lunges','Thu: Rest','Fri: 3×12 dips + 3×20 squats','Sat: Core work','Sun: Rest'],
+    intermediate:['Mon: Chest + Tris 4 sets','Tue: Back + Bis 4 sets','Wed: Legs 5×20','Thu: Shoulders + Core','Fri: Full body compound','Sat: Light cardio','Sun: Rest'],
+    advanced:    ['Mon: Chest 5×15 + Shoulders','Tue: Back 6×10 + Core','Wed: Legs 6×20','Thu: Arms + HIIT','Fri: Heavy compound','Sat: Skill work','Sun: Rest']
+  },
+  endurance:{
+    beginner:    ['Mon: 20min jog','Tue: Jacks × 3','Wed: Walk/run intervals','Thu: Rest','Fri: 30min jog','Sat: Circuit 20min','Sun: Rest'],
+    intermediate:['Mon: 5km run','Tue: HIIT 30min','Wed: 6km tempo','Thu: Cross-train','Fri: 8km easy','Sat: Long 10km','Sun: Rest'],
+    advanced:    ['Mon: 10km','Tue: 8×400m intervals','Wed: 12km tempo','Thu: Cross + strength','Fri: 15km','Sat: 20km long','Sun: Recovery']
+  },
+  flexibility:{
+    beginner:    ['Mon: 20min yoga','Tue: Hip flexors 15min','Wed: Rest','Thu: Full stretch 20min','Fri: Yoga 25min','Sat: Foam roll','Sun: Rest'],
+    intermediate:['Mon: Vinyasa 45min','Tue: Mobility 30min','Wed: Pilates 40min','Thu: Deep stretch','Fri: Power yoga 50min','Sat: Yin yoga 60min','Sun: Rest'],
+    advanced:    ['Mon: Advanced yoga 60min','Tue: Gymnastics mobility','Wed: Flexibility strength','Thu: Deep tissue 45min','Fri: Advanced pilates','Sat: Aerial work','Sun: Restorative']
+  },
+  general:{
+    beginner:    ['Mon: 20min walk + basics','Tue: Rest','Wed: 30min light exercise','Thu: Rest','Fri: Full body light','Sat: Outdoor activity','Sun: Rest'],
+    intermediate:['Mon: Strength 40min','Tue: Cardio 30min','Wed: Full body','Thu: Yoga','Fri: HIIT combo','Sat: Outdoor sport','Sun: Rest'],
+    advanced:    ['Mon: Heavy + 20min cardio','Tue: HIIT 45min','Wed: Sport training','Thu: Skill + mobility','Fri: Compound + sprint','Sat: Competition prep','Sun: Rest']
+  }
+};
+const PLAYER_COLORS=['#e8ff47','#47ffb8','#ff6b47','#a855f7','#3b82f6','#ff4757','#ffd700','#00d2ff','#ff6b9d','#4ade80'];
+const TILE_SIZE   = 0.001;   // ~111m per cell at equator
+const MIN_CAP_M   = 20;      // min meters in a tile to be eligible to capture
+const MAX_WALK_MS = 4.2;     // ~15 km/h — above = GPS drift / vehicle
+
+/* ── APP STATE ──────────────────────────────── */
+let U = null;           // Firestore user document (in-memory)
+let FBU = null;         // Firebase Auth user object
+let saveTimer = null;
+
+// Workout state
+let timerIv = null, timerSec = 0, timerOn = false;
+let repSess = 0, repEx = null, repBucket = [];
+
+// Territory / Walk state
+let leafMap = null;                // Leaflet map instance (null until first visit)
+let mapReady = false;
+let tileUnsub = null;              // Firestore onSnapshot unsubscribe
+let tileCache = [];                // All tiles received from Firestore
+let tileRects = {};                // {tileId: L.rectangle}
+
+let walkOn = false;
+let walkWid = null;                // geolocation watchPosition id
+let walkLastPos = null;
+let walkMeters = 0;
+let walkTileDist = {};             // {tileId: meters this session}
+let walkLine = null;               // L.polyline live path
+let walkDot = null;                // L.circleMarker current position
+let visitTmpRects = {};            // transient highlight rects during walk
+
+let panelOpen = false;
+let myColor = '#e8ff47';
+let selGoal = 'weight_loss', selLevel = 'beginner';
+
+/* ── FIREBASE AUTH ──────────────────────────── */
+auth.onAuthStateChanged(async user => {
+  if (!user) { showScr('auth'); return; }
+  FBU = user;
+  if (!user.emailVerified) {
+    document.getElementById('verify-addr').textContent = user.email;
+    showScr('verify');
+    return;
+  }
+  try {
+    await loadU(user);
+    await db.collection('users').doc(user.uid).update({
+      lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    launchApp(user);
+  } catch(e) {
+    console.error(e);
+    toast('Error loading profile. Retrying...');
+    showScr('auth');
+  }
+});
+
+function showScr(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('scr-' + name).classList.add('active');
+}
+
+/* ── FIRESTORE USER ─────────────────────────── */
+async function loadU(user) {
+  const ref  = db.collection('users').doc(user.uid);
+  const snap = await ref.get();
+  if (snap.exists) {
+    U = snap.data();
+  } else {
+    U = defProfile(user);
+    await ref.set(U);
+  }
+  const today = yyyymmdd();
+  if (U.stepDate !== today) { U.steps = 0; U.stepDate = today; sched(); }
+}
+
+function defProfile(user) {
+  return {
+    name: user.displayName || 'Champion', email: user.email,
+    goal:'general', fitnessLevel:'beginner',
+    workouts:0, points:0, streak:0, bestStreak:0,
+    lastWorkoutDate:null, totalReps:0, calories:0,
+    challenges:0, challengeDone:false, challengeDate:'',
+    weeklyData:[0,0,0,0,0,0,0], exerciseCounts:{},
+    steps:0, stepDate:'', reminders:{wk:false,st:false},
+    tilesOwned:0, conquests:0, totalWalkM:0,
+    signupTimestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    lastLogin:       firebase.firestore.FieldValue.serverTimestamp()
+  };
+}
+
+function sched() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveU, 1500);
+}
+
+async function saveU() {
+  if (!FBU || !U) return;
+  try { await db.collection('users').doc(FBU.uid).set(U, {merge:true}); }
+  catch(e) { console.error('Save error', e); }
+}
+
+/* ── AUTH HELPERS ───────────────────────────── */
+const ERR = {
+  'auth/invalid-email':       "Invalid email address.",
+  'auth/user-disabled':       "This account is disabled.",
+  'auth/user-not-found':      "No account with that email.",
+  'auth/wrong-password':      "Incorrect password.",
+  'auth/email-already-in-use':"Email already registered. Try logging in.",
+  'auth/weak-password':       "Use at least 6 characters.",
+  'auth/too-many-requests':   "Too many attempts. Please wait.",
+  'auth/network-request-failed':"Network error.",
+  'auth/invalid-credential':  "Invalid email or password."
+};
+const errMsg = code => ERR[code] || 'Something went wrong.';
+
+function ferr(id, msg) { const e=document.getElementById(id); e.textContent=msg; e.classList.add('on'); }
+function fok (id, msg) { const e=document.getElementById(id); e.textContent=msg; e.classList.add('on'); }
+function fclr(...ids) { ids.forEach(id=>{ const e=document.getElementById(id); if(e){e.textContent='';e.classList.remove('on');}}); }
+function setBtnLd(id, v) { const b=document.getElementById(id); if(!b)return; b.classList.toggle('ld',v); b.disabled=v; }
+
+function authTab(tab) {
+  // Hide all panels
+  ['login','signup','forgot'].forEach(p => {
+    const el = document.getElementById('fp-'+p);
+    if (el) el.classList.remove('on');
+  });
+  // Show/hide the auth tabs row
+  const tabRow = document.getElementById('auth-tabs');
+  if (tab === 'forgot') {
+    tabRow.style.display = 'none';
+    document.getElementById('fp-forgot').classList.add('on');
+    fclr('err-forgot','ok-forgot');
+  } else {
+    tabRow.style.display = 'flex';
+    document.getElementById('fp-'+tab).classList.add('on');
+    // Highlight active tab button
+    tabRow.querySelectorAll('.tb').forEach((b,i) => {
+      b.classList.toggle('on', (i===0&&tab==='login') || (i===1&&tab==='signup'));
+    });
+    fclr('err-login','err-signup','ok-signup');
+  }
+}
+
+async function doLogin() {
+  fclr('err-login');
+  const email = document.getElementById('f-lemail').value.trim();
+  const pass  = document.getElementById('f-lpass').value;
+  if (!email||!pass) { ferr('err-login','Please fill in both fields.'); return; }
+  setBtnLd('btn-login', true);
+  try { await auth.signInWithEmailAndPassword(email, pass); }
+  catch(e) { ferr('err-login', errMsg(e.code)); setBtnLd('btn-login', false); }
+}
+
+async function doSignup() {
+  fclr('err-signup','ok-signup');
+  const name  = document.getElementById('f-sname').value.trim();
+  const email = document.getElementById('f-semail').value.trim();
+  const pass  = document.getElementById('f-spass').value;
+  const goal  = document.getElementById('f-sgoal').value  || 'general';
+  const level = document.getElementById('f-slevel').value || 'beginner';
+  if (!name)       { ferr('err-signup','Enter your name.'); return; }
+  if (!email)      { ferr('err-signup','Enter your email.'); return; }
+  if (pass.length<6){ ferr('err-signup','Password must be 6+ characters.'); return; }
+  setBtnLd('btn-signup', true);
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.updateProfile({ displayName: name });
+    await cred.user.sendEmailVerification();
+    const p = { ...defProfile(cred.user), name, email, goal, fitnessLevel:level };
+    await db.collection('users').doc(cred.user.uid).set(p);
+    setBtnLd('btn-signup', false);
+    // onAuthStateChanged fires next → routes to verify screen
+  } catch(e) { ferr('err-signup', errMsg(e.code)); setBtnLd('btn-signup', false); }
+}
+
+async function doForgotPw() {
+  fclr('err-forgot','ok-forgot');
+  const email = document.getElementById('f-femail').value.trim();
+  if (!email) { ferr('err-forgot','Enter your email.'); return; }
+  setBtnLd('btn-forgot', true);
+  try {
+    await auth.sendPasswordResetEmail(email);
+    fok('ok-forgot','Reset email sent! Check your inbox.');
+    document.getElementById('f-femail').value = '';
+  } catch(e) { ferr('err-forgot', errMsg(e.code)); }
+  finally { setBtnLd('btn-forgot', false); }
+}
+
+async function checkVerify() {
+  setBtnLd('btn-verify', true);
+  try {
+    await FBU.reload();
+    if (!FBU.emailVerified) toast('Not verified yet. Check your inbox.');
+  } catch { toast('Error. Try again.'); }
+  setBtnLd('btn-verify', false);
+}
+
+async function resendVerify() {
+  const b = document.getElementById('btn-resend');
+  b.disabled = true; b.textContent = 'Sending...';
+  try { await FBU.sendEmailVerification(); toast('Verification email resent!'); }
+  catch { toast('Could not resend. Wait a minute.'); }
+  setTimeout(() => { b.disabled=false; b.textContent='Resend verification email'; }, 30000);
+}
+
+async function doLogout() {
+  stopWalk(true);
+  timerStop(true);
+  if (tileUnsub) { tileUnsub(); tileUnsub=null; }
+  clearTimeout(saveTimer);
+  await saveU();
+  U = null; FBU = null;
+  await auth.signOut();
+  toast('Logged out. See you tomorrow!');
+}
+
+/* ── APP LAUNCH ─────────────────────────────── */
+function launchApp(user) {
+  // Streak check
+  const today = yyyymmdd();
+  const yest  = yyyymmdd(-1);
+  if (U.lastWorkoutDate && U.lastWorkoutDate!==today && U.lastWorkoutDate!==yest) {
+    U.streak = 0; sched();
+  }
+  myColor = uidColor(user.uid);
+
+  // Nav setup
+  const ini = (U.name||'FQ').split(' ').map(c=>c[0]).join('').toUpperCase().slice(0,2);
+  document.getElementById('nav-initials').textContent = ini;
+  document.getElementById('nav-un').textContent = (U.name||'').split(' ')[0];
+  document.getElementById('nav-vdot').style.display = user.emailVerified ? 'block' : 'none';
+
+  // Profile
+  document.getElementById('ai-name').textContent   = U.name || '—';
+  document.getElementById('ai-email').textContent  = user.email || '—';
+  const ve = document.getElementById('ai-ver');
+  ve.textContent = user.emailVerified ? '✓ Verified' : '✗ Not verified';
+  ve.className   = 'ai-v ' + (user.emailVerified ? 'ok' : 'no');
+  document.getElementById('ai-joined').textContent = user.metadata.creationTime
+    ? new Date(user.metadata.creationTime).toLocaleDateString() : '—';
+  document.getElementById('ai-last').textContent   = user.metadata.lastSignInTime
+    ? new Date(user.metadata.lastSignInTime).toLocaleString() : '—';
+
+  selGoal  = U.goal || 'weight_loss';
+  selLevel = U.fitnessLevel || 'beginner';
+  restoreSel('#goal-opts', selGoal);
+  restoreSel('#lvl-opts',  selLevel);
+  if (U.reminders?.wk) applyTog('wk', true);
+  if (U.reminders?.st) applyTog('st', true);
+
+  buildExGrid();
+  refreshChallenge();
+  refreshUI();
+  initSteps();
+
+  showScr('app');
+  navTo('home');
+
+  // Init map deferred — only after territory page is actually shown
+  // (not here at launch, to avoid Leaflet measuring a hidden element)
+}
+
+/* ── NAVIGATION ─────────────────────────────── */
+function navTo(name) {
+  const pages = ['home','workout','territory','progress','profile'];
+  pages.forEach(p => {
+    const pg  = document.getElementById('page-'+p);
+    const bni = document.getElementById('bni-'+p);
+    if (!pg) return;
+    const isActive = p === name;
+    // territory page uses flex, others use block
+    if (p === 'territory') {
+      pg.style.display = isActive ? 'flex' : 'none';
+      pg.classList.toggle('on', isActive);
+    } else {
+      pg.style.display = isActive ? 'block' : 'none';
+      pg.classList.toggle('on', isActive);
+    }
+    if (bni) {
+      bni.classList.remove('on','walk-live');
+      if (isActive) bni.classList.add('on');
+      if (p === 'territory' && walkOn) bni.classList.add('walk-live');
+    }
+  });
+
+  if (name === 'progress') refreshUI();
+
+  // ── KEY FIX: init map only when territory page is visible ──
+  if (name === 'territory') {
+    if (!mapReady) {
+      // Use requestAnimationFrame so DOM has painted the flex layout
+      requestAnimationFrame(() => requestAnimationFrame(() => initMap()));
+    } else {
+      // Map exists but might have wrong size (was hidden)
+      leafMap.invalidateSize();
+    }
+  }
+}
+
+/* ── MAP INIT ───────────────────────────────── */
+function initMap() {
+  const el = document.getElementById('tmap');
+  if (!el || mapReady) return;
+
+  // Force a layout read to make sure tmap has a real height
+  const h = el.getBoundingClientRect().height;
+  if (h < 50) {
+    // Not painted yet — retry
+    setTimeout(() => initMap(), 100);
+    return;
+  }
+
+  leafMap = L.map('tmap', {
+    center: [20.9, 73.1],  // default fallback centre (India)
+    zoom: 15,
+    zoomControl: true,
+    attributionControl: false
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom:19, subdomains:'abcd'
+  }).addTo(leafMap);
+
+  mapReady = true;
+
+  // Try to jump to user's real location
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => leafMap.setView([pos.coords.latitude, pos.coords.longitude], 16),
+      ()  => {},
+      { timeout: 6000, maximumAge: 60000 }
+    );
+  }
+
+  // Start listening to tiles now that map + auth are both ready
+  subTiles();
+}
+
+/* ── FIRESTORE TILES (real-time) ────────────── */
+function subTiles() {
+  if (tileUnsub) return;                     // already subscribed
+  if (!FBU) return;                          // not authed yet — shouldn't happen here
+
+  tileUnsub = db.collection('tiles')
+    .limit(1000)
+    .onSnapshot(snap => {
+      tileCache = [];
+      snap.forEach(doc => {
+        const t = doc.data();
+        tileCache.push(t);
+        renderTile(t);
+      });
+      // Remove rects for tiles that were deleted
+      const live = new Set(tileCache.map(t => t.id));
+      Object.keys(tileRects).forEach(id => {
+        if (!live.has(id)) { tileRects[id].remove(); delete tileRects[id]; }
+      });
+      rebuildLeaderboard();
+      rebuildMyPanel();
+      updateHomeTerr();
+    }, err => console.error('Tile snapshot error:', err));
+}
+
+function renderTile(tile) {
+  if (!mapReady || !leafMap) return;
+  const bounds = tileBounds(tile.id);
+  const color  = tile.ownerColor || '#666';
+  const isMe   = tile.ownerUID === FBU?.uid;
+  const style  = { fillColor:color, fillOpacity:.42, color:isMe?'#fff':color, weight:isMe?2:1, opacity:.75 };
+
+  if (tileRects[tile.id]) {
+    tileRects[tile.id].setStyle(style);
+    // Refresh popup content too
+    tileRects[tile.id].getPopup()?.setContent(tilePopupHTML(tile, isMe));
+  } else {
+    const rect = L.rectangle(bounds, {...style, interactive:true}).addTo(leafMap);
+    rect.bindPopup(tilePopupHTML(tile, isMe), {maxWidth:220});
+    tileRects[tile.id] = rect;
+  }
+}
+
+function tilePopupHTML(tile, isMe) {
+  const date = tile.capturedAt?.toDate ? tile.capturedAt.toDate().toLocaleDateString() : '—';
+  const km   = ((tile.captureM||0)/1000).toFixed(2);
+  return `<div class="tile-pop-name" style="color:${tile.ownerColor||'#fff'}">${tile.ownerName}'s Tile</div>
+<div style="font-size:.7rem;color:var(--muted)">Captured ${date}</div>
+<div class="tile-pop-row"><span>Defender walked:</span><span style="color:${tile.ownerColor||'#fff'};font-weight:700">${km} km</span></div>
+<div class="tile-pop-row" style="margin-top:.2rem">${
+  isMe
+    ? `<span style="color:var(--a2)">🛡️ Your tile</span>`
+    : `<span>To conquer, walk</span><span style="color:var(--a3);font-weight:700">&gt;${Math.ceil(tile.captureM||0)}m here</span>`
+}</div>`;
+}
+
+/* ── TILE MATH ──────────────────────────────── */
+function tileId(lat, lng) {
+  return `${Math.floor(lat/TILE_SIZE)}_${Math.floor(lng/TILE_SIZE)}`;
+}
+function tileBounds(id) {
+  const [r,c] = id.split('_').map(Number);
+  return [[r*TILE_SIZE, c*TILE_SIZE], [(r+1)*TILE_SIZE, (c+1)*TILE_SIZE]];
+}
+function tileCenter(id) {
+  const [r,c] = id.split('_').map(Number);
+  return [(r+.5)*TILE_SIZE, (c+.5)*TILE_SIZE];
+}
+function haversine(la1,lo1,la2,lo2) {
+  const R=6371000, f1=la1*Math.PI/180, f2=la2*Math.PI/180,
+        df=(la2-la1)*Math.PI/180, dl=(lo2-lo1)*Math.PI/180;
+  const a=Math.sin(df/2)**2+Math.cos(f1)*Math.cos(f2)*Math.sin(dl/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* ── WALK: START ────────────────────────────── */
+function startWalk() {
+  if (!navigator.geolocation) {
+    showGpsErr('GPS not available on this device.');
+    return;
+  }
+  hideGpsErr();
+
+  walkOn = true;
+  walkLastPos = null;
+  walkMeters  = 0;
+  walkTileDist = {};
+
+  // Update HUD
+  document.getElementById('wb-start').style.display = 'none';
+  document.getElementById('wb-stop').style.display  = 'flex';
+  document.getElementById('hud-stats').style.display = 'flex';
+
+  // Update nav icon
+  const bni = document.getElementById('bni-territory');
+  if (bni) bni.classList.add('walk-live');
+
+  // Draw live path
+  if (walkLine) { walkLine.remove(); }
+  walkLine = L.polyline([], {color:myColor, weight:4, opacity:.85}).addTo(leafMap);
+
+  // Draw live dot
+  if (walkDot) { walkDot.remove(); }
+  walkDot = L.circleMarker([0,0], {radius:8,fillColor:myColor,color:'#fff',weight:2,fillOpacity:.95}).addTo(leafMap);
+
+  walkWid = navigator.geolocation.watchPosition(
+    onGPS,
+    err => { showGpsErr('GPS error: ' + (err.message||'unknown')); },
+    { enableHighAccuracy:true, maximumAge:500, timeout:20000 }
+  );
+
+  toast('🚶 Walk started! Move to claim tiles.');
+}
+
+/* ── WALK: GPS CALLBACK ─────────────────────── */
+function onGPS(pos) {
+  if (!walkOn) return;
+  hideGpsErr();
+
+  const { latitude:lat, longitude:lng, accuracy } = pos.coords;
+  if (accuracy > 55) return;  // ignore inaccurate fixes
+
+  const ts = pos.timestamp;
+
+  // Move markers
+  walkDot.setLatLng([lat, lng]);
+  walkLine.addLatLng([lat, lng]);
+  leafMap.panTo([lat, lng], {animate:true, duration:.4});
+
+  if (walkLastPos) {
+    const dist = haversine(walkLastPos.lat, walkLastPos.lng, lat, lng);
+    const dt   = (ts - walkLastPos.ts) / 1000;
+
+    if (dt > 0 && dt < 60) {
+      const spd = dist / dt;  // m/s
+      if (spd <= MAX_WALK_MS && dist > 0.5) {
+        walkMeters += dist;
+
+        const tid = tileId(lat, lng);
+        walkTileDist[tid] = (walkTileDist[tid] || 0) + dist;
+
+        // Temp highlight this tile
+        if (!visitTmpRects[tid] && !tileRects[tid]) {
+          const b = tileBounds(tid);
+          visitTmpRects[tid] = L.rectangle(b, {
+            fillColor:myColor, fillOpacity:.15, color:myColor, weight:1, opacity:.4, interactive:false
+          }).addTo(leafMap);
+        }
+
+        // Update HUD
+        document.getElementById('hud-spd').textContent = (spd*3.6).toFixed(1);
+      }
+    }
+  }
+
+  walkLastPos = { lat, lng, ts };
+
+  // Update HUD counters
+  document.getElementById('hud-m').textContent     = Math.round(walkMeters);
+  document.getElementById('hud-tiles').textContent = Object.keys(walkTileDist).length;
+  document.getElementById('hud-cap').textContent   = Object.values(walkTileDist).filter(d=>d>=MIN_CAP_M).length;
+}
+
+/* ── WALK: STOP ─────────────────────────────── */
+async function stopWalk(silent) {
+  if (walkWid !== null) { navigator.geolocation.clearWatch(walkWid); walkWid = null; }
+  if (!walkOn) return;
+  walkOn = false;
+
+  // Restore UI
+  document.getElementById('wb-start').style.display = 'flex';
+  document.getElementById('wb-stop').style.display  = 'none';
+  document.getElementById('hud-stats').style.display = 'none';
+
+  const bni = document.getElementById('bni-territory');
+  if (bni) bni.classList.remove('walk-live');
+
+  // Remove temp highlights
+  Object.values(visitTmpRects).forEach(r => r.remove());
+  Object.keys(visitTmpRects).forEach(k => delete visitTmpRects[k]);
+
+  if (silent || walkMeters < 10) return;
+
+  toast('⚙️ Claiming territories...');
+
+  const res = await doCaptures();
+
+  // Update user doc
+  U.totalWalkM = (U.totalWalkM || 0) + walkMeters;
+  U.conquests  = (U.conquests  || 0) + res.conquered;
+
+  // XP calculation
+  const xp = Math.round(walkMeters/100*2) + res.newTiles*5 + res.conquered*15;
+  U.points = (U.points || 0) + xp;
+
+  // Refresh tile count from cache
+  U.tilesOwned = tileCache.filter(t => t.ownerUID === FBU.uid).length;
+
+  clearTimeout(saveTimer);
+  await saveU();
+
+  showWalkModal(walkMeters, res, xp);
+  refreshUI();
+}
+
+/* ── CAPTURE LOGIC ──────────────────────────── */
+async function doCaptures() {
+  const eligible = Object.entries(walkTileDist).filter(([,d]) => d >= MIN_CAP_M);
+  const res = { newTiles:0, conquered:0, defended:0, events:[] };
+
+  for (const [tid, myM] of eligible) {
+    try {
+      const ref = db.collection('tiles').doc(tid);
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const old  = snap.exists ? snap.data() : null;
+        const [clat, clng] = tileCenter(tid);
+
+        if (!old) {
+          // Unclaimed → claim it
+          tx.set(ref, {
+            id: tid,
+            tileLat: clat, tileLng: clng,
+            ownerUID:   FBU.uid,
+            ownerName:  U.name,
+            ownerColor: myColor,
+            captureM:   myM,
+            capturedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            prevOwnerUID:  null,
+            prevOwnerName: null
+          });
+          res.newTiles++;
+          res.events.push({ k:'new', myM });
+        } else if (old.ownerUID === FBU.uid) {
+          // Already mine — update if improved
+          if (myM > (old.captureM||0)) {
+            tx.update(ref, { captureM: myM });
+          }
+        } else {
+          // Owned by someone else — must beat their distance
+          if (myM > (old.captureM||0)) {
+            tx.update(ref, {
+              ownerUID:   FBU.uid,
+              ownerName:  U.name,
+              ownerColor: myColor,
+              captureM:   myM,
+              capturedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              prevOwnerUID:  old.ownerUID,
+              prevOwnerName: old.ownerName
+            });
+            res.conquered++;
+            res.events.push({ k:'conquered', myM, prev:old.ownerName, prevM:old.captureM||0 });
+          } else {
+            res.defended++;
+            res.events.push({ k:'defended', myM, owner:old.ownerName, ownerM:old.captureM||0 });
+          }
+        }
+      });
+    } catch(e) { console.error('Capture tx error', tid, e); }
+  }
+  return res;
+}
+
+/* ── LEADERBOARD & PANEL ────────────────────── */
+function rebuildLeaderboard() {
+  const owners = {};
+  tileCache.forEach(t => {
+    if (!owners[t.ownerUID]) owners[t.ownerUID] = { name:t.ownerName, color:t.ownerColor, tiles:0, km:0 };
+    owners[t.ownerUID].tiles++;
+    owners[t.ownerUID].km += (t.captureM||0);
+  });
+  const sorted = Object.entries(owners).sort((a,b) => b[1].tiles - a[1].tiles);
+  const el = document.getElementById('lb-list');
+  if (!el) return;
+  if (!sorted.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:.76rem;padding:.85rem">No territories yet — go walk! 🚶</div>';
+    return;
+  }
+  const rc = ['g','s','b'];
+  el.innerHTML = sorted.slice(0,25).map(([uid,d],i) => {
+    const me = uid === FBU?.uid;
+    return `<div class="lb-row">
+      <div class="lb-rank ${rc[i]||''}">${i+1}</div>
+      <div class="lb-dot" style="background:${d.color||'#666'}"></div>
+      <div class="lb-name ${me?'me':''}">${d.name}${me?' (You)':''}</div>
+      <div class="lb-stat"><div class="lb-tiles">${d.tiles} tiles</div><div class="lb-km">${(d.km/1000).toFixed(1)} km</div></div>
+    </div>`;
+  }).join('');
+}
+
+function rebuildMyPanel() {
+  const mine = tileCache.filter(t => t.ownerUID === FBU?.uid);
+  const km   = mine.reduce((s,t)=>s+(t.captureM||0),0)/1000;
+  document.getElementById('my-cnt').textContent = mine.length;
+  document.getElementById('my-km').textContent  = km.toFixed(1);
+  document.getElementById('my-cq').textContent  = U?.conquests || 0;
+
+  const lost = tileCache.filter(t => t.prevOwnerUID === FBU?.uid && t.ownerUID !== FBU?.uid);
+  const cl   = document.getElementById('contested-list');
+  cl.innerHTML = lost.length
+    ? lost.map(t=>`<div style="display:flex;align-items:center;gap:.4rem;padding:.35rem .55rem;background:rgba(255,71,87,.07);border:1px solid rgba(255,71,87,.18);border-radius:7px;margin-bottom:.25rem;font-size:.74rem;">
+        <span>⚔️</span><span style="flex:1">Stolen by <b style="color:${t.ownerColor}">${t.ownerName}</b></span>
+        <span style="font-size:.66rem;color:var(--danger)">Walk &gt;${Math.ceil(t.captureM||0)}m to reclaim</span></div>`).join('')
+    : '<div style="color:var(--muted);font-size:.74rem">None — safe 🛡️</div>';
+}
+
+function updateHomeTerr() {
+  const mine = tileCache.filter(t => t.ownerUID === FBU?.uid);
+  document.getElementById('h-tiles').textContent = mine.length;
+  document.getElementById('h-km').textContent    = ((U?.totalWalkM||0)/1000).toFixed(1);
+}
+
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('t-panel').classList.toggle('open', panelOpen);
+  document.getElementById('panel-fab').classList.toggle('rotated', panelOpen);
+  if (panelOpen) { rebuildLeaderboard(); rebuildMyPanel(); }
+}
+
+function panelTab(name) {
+  document.getElementById('pp-lb').style.display   = name==='lb'   ? 'block' : 'none';
+  document.getElementById('pp-mine').style.display = name==='mine' ? 'block' : 'none';
+  const btnLb   = document.getElementById('ptb-lb');
+  const btnMine = document.getElementById('ptb-mine');
+  btnLb.style.background   = name==='lb'   ? 'var(--accent)'   : 'var(--bg3)';
+  btnLb.style.color         = name==='lb'   ? '#000'            : 'var(--muted)';
+  btnLb.style.border        = name==='lb'   ? 'none'            : '1px solid var(--border)';
+  btnMine.style.background  = name==='mine' ? 'var(--accent)'   : 'var(--bg3)';
+  btnMine.style.color       = name==='mine' ? '#000'            : 'var(--muted)';
+  btnMine.style.border      = name==='mine' ? 'none'            : '1px solid var(--border)';
+  if (name==='mine') rebuildMyPanel();
+}
+
+function showGpsErr(msg) { const e=document.getElementById('gps-err'); e.textContent=msg||'GPS unavailable'; e.classList.add('on'); }
+function hideGpsErr()    { document.getElementById('gps-err').classList.remove('on'); }
+
+/* ── WALK SUMMARY MODAL ─────────────────────── */
+function showWalkModal(meters, res, xp) {
+  document.getElementById('ws-m').textContent  = Math.round(meters);
+  document.getElementById('ws-new').textContent = res.newTiles;
+  document.getElementById('ws-cq').textContent  = res.conquered;
+  document.getElementById('ws-df').textContent  = res.defended;
+  document.getElementById('ws-xp').textContent  = `+${xp} XP from territory!`;
+  document.getElementById('ev-list').innerHTML = res.events.slice(0,8).map(e => {
+    if (e.k==='new')
+      return `<div class="ev-item"><span class="ei-ico">🏴</span><span class="ei-txt">Claimed new tile</span><span class="ei-xp">+5 XP</span></div>`;
+    if (e.k==='conquered')
+      return `<div class="ev-item"><span class="ei-ico">⚔️</span><span class="ei-txt">Conquered from <b>${e.prev}</b> (beat ${Math.ceil(e.prevM)}m)</span><span class="ei-xp">+15 XP</span></div>`;
+    if (e.k==='defended')
+      return `<div class="ev-item"><span class="ei-ico">🛡️</span><span class="ei-txt"><b>${e.owner}</b>'s tile held — need &gt;${Math.ceil(e.ownerM)}m</span><span class="ei-xp">0 XP</span></div>`;
+    return '';
+  }).join('');
+  openMod('modal-walk');
+}
+
+/* ── WORKOUT ────────────────────────────────── */
+function timerStart() {
+  if (timerOn) return;
+  timerOn=true; timerSec=0;
+  document.getElementById('btn-timer-start').textContent='⏸ Running';
+  document.getElementById('wk-ts').textContent='Session in progress';
+  timerIv=setInterval(()=>{
+    timerSec++;
+    document.getElementById('wk-timer').textContent=
+      String(Math.floor(timerSec/60)).padStart(2,'0')+':'+String(timerSec%60).padStart(2,'0');
+  },1000);
+}
+
+function timerStop(silent) {
+  if (!timerOn&&!silent) return;
+  clearInterval(timerIv); timerOn=false;
+}
+
+function selectEx(id) {
+  repEx=id;
+  document.querySelectorAll('.ex-card').forEach(c=>c.classList.remove('on'));
+  document.getElementById('ex-'+id).classList.add('on');
+  const ex=EXERCISES.find(e=>e.id===id);
+  document.getElementById('rep-lbl').textContent=(ex?ex.n:'Exercise').toUpperCase();
+  document.getElementById('rep-num').textContent=repSess;
+}
+
+function addRep() {
+  if (!timerOn)  { toast('Start the timer first!'); return; }
+  if (!repEx)    { toast('Select an exercise first!'); return; }
+  const now=Date.now();
+  repBucket=repBucket.filter(t=>now-t<2000); repBucket.push(now);
+  if (repBucket.length>6) { document.getElementById('ac-warn').classList.add('on'); return; }
+  document.getElementById('ac-warn').classList.remove('on');
+  repSess++;
+  document.getElementById('rep-num').textContent=repSess;
+}
+
+function resetReps() {
+  repSess=0; repBucket=[];
+  document.getElementById('rep-num').textContent=0;
+  document.getElementById('ac-warn').classList.remove('on');
+}
+
+async function endWorkout() {
+  if (timerOn && timerSec<30) { toast('⚠️ Min 30s to save workout.'); return; }
+  timerStop(false);
+  const today=yyyymmdd(), yest=yyyymmdd(-1), tidx=(new Date().getDay()+6)%7;
+  if (U.lastWorkoutDate===today) {}
+  else if (U.lastWorkoutDate===yest) { U.streak++; }
+  else { U.streak=1; }
+  U.lastWorkoutDate=today;
+  if (U.streak>U.bestStreak) U.bestStreak=U.streak;
+  U.workouts++;
+  const tMin=timerSec/60, ex=EXERCISES.find(e=>e.id===repEx);
+  const cal=Math.round(repSess*(ex?.c||.4)+tMin*3);
+  U.calories+=cal; U.totalReps+=repSess;
+  if (repEx) { U.exerciseCounts=U.exerciseCounts||{}; U.exerciseCounts[repEx]=(U.exerciseCounts[repEx]||0)+repSess; }
+  if (!U.weeklyData||U.weeklyData.length<7) U.weeklyData=[0,0,0,0,0,0,0];
+  U.weeklyData[tidx]++;
+  const xp=Math.max(10,Math.round(repSess*.5+tMin*5));
+  U.points+=xp;
+  clearTimeout(saveTimer); await saveU();
+  document.getElementById('ms-time').textContent=String(Math.floor(timerSec/60)).padStart(2,'0')+':'+String(timerSec%60).padStart(2,'0');
+  document.getElementById('ms-reps').textContent=repSess;
+  document.getElementById('ms-cal').textContent=cal;
+  document.getElementById('ms-xp').textContent='+'+xp+' XP Earned!';
+  openMod('modal-wk');
+  timerSec=0; repSess=0; timerOn=false;
+  document.getElementById('wk-timer').textContent='00:00';
+  document.getElementById('rep-num').textContent=0;
+  document.getElementById('btn-timer-start').textContent='▶ Start';
+  document.getElementById('wk-ts').textContent='Ready to start';
+  refreshUI();
+}
+
+function buildExGrid() {
+  document.getElementById('ex-grid').innerHTML=EXERCISES.map(ex=>
+    `<div class="ex-card" id="ex-${ex.id}" onclick="selectEx('${ex.id}')">
+      <div class="ex-icon">${ex.ic}</div><div class="ex-name">${ex.n}</div><div class="ex-mus">${ex.m}</div>
+    </div>`).join('');
+}
+
+/* ── DAILY CHALLENGE ────────────────────────── */
+function refreshChallenge() {
+  const today=yyyymmdd();
+  const seed=parseInt(today.replace(/-/g,''))%CHALLENGES.length;
+  const ch=CHALLENGES[seed];
+  document.getElementById('ch-title').textContent=ch.t;
+  document.getElementById('ch-desc').textContent=ch.d;
+  document.getElementById('ch-reward').textContent='+'+ch.r+' XP';
+  const btn=document.getElementById('ch-btn');
+  const done=U.challengeDate===today&&U.challengeDone;
+  btn.textContent=done?'✅ Completed!':'Mark Complete';
+  btn.disabled=done;
+  btn.style.color=done?'var(--a2)':'';
+  btn.style.borderColor=done?'var(--a2)':'';
+}
+
+async function completeChallenge() {
+  const today=yyyymmdd();
+  if (U.challengeDate===today&&U.challengeDone) return;
+  const seed=parseInt(today.replace(/-/g,''))%CHALLENGES.length;
+  const ch=CHALLENGES[seed];
+  U.points+=ch.r; U.challengeDone=true; U.challengeDate=today; U.challenges=(U.challenges||0)+1;
+  refreshChallenge(); refreshUI(); toast('🎉 Challenge done! +'+ch.r+' XP');
+  await saveU();
+}
+
+/* ── STEPS ──────────────────────────────────── */
+function updateStepUI(n) {
+  document.getElementById('step-count').textContent=n.toLocaleString();
+  const p=Math.min(100,Math.round((n/10000)*100));
+  document.getElementById('step-fill').style.width=p+'%';
+  const msgs=['Walk to count steps','Keep going!','Halfway!','Almost there!','Goal reached! 🎉'];
+  document.getElementById('step-msg').textContent=msgs[p>=100?4:p>=75?3:p>=50?2:p>=20?1:0]+' '+p+'%';
+}
+
+function initSteps() {
+  const st=document.getElementById('step-status');
+  updateStepUI(U.steps||0);
+  if (window.DeviceMotionEvent) {
+    let hist=[],last=0;
+    const handle=e=>{
+      const a=e.accelerationIncludingGravity;
+      if (!a||a.x===null) return;
+      const mag=Math.sqrt(a.x**2+a.y**2+a.z**2);
+      hist.push(mag); if(hist.length>20)hist.shift();
+      const avg=hist.reduce((a,b)=>a+b,0)/hist.length;
+      const now=Date.now();
+      if (Math.abs(mag-avg)>12&&now-last>300) {
+        last=now; if(!U)return;
+        U.steps=(U.steps||0)+1; updateStepUI(U.steps); sched(); st.textContent='Counting...';
+      }
+    };
+    if (typeof DeviceMotionEvent.requestPermission==='function') {
+      st.textContent='Tap to enable'; st.style.cursor='pointer';
+      st.onclick=()=>DeviceMotionEvent.requestPermission().then(s=>{
+        if(s==='granted'){window.addEventListener('devicemotion',handle);st.textContent='Active';st.onclick=null;}
+      });
+    } else { window.addEventListener('devicemotion',handle); st.textContent='Active'; }
+  } else {
+    st.textContent='Demo mode';
+    setInterval(()=>{
+      if(!U||!document.getElementById('scr-app').classList.contains('active'))return;
+      U.steps=(U.steps||0)+Math.floor(Math.random()*3);
+      updateStepUI(U.steps); sched();
+    },3500);
+  }
+}
+
+/* ── UI REFRESH ─────────────────────────────── */
+function refreshUI() {
+  if (!U) return;
+  document.getElementById('s-streak').textContent  = U.streak+'🔥';
+  document.getElementById('s-wk').textContent      = U.workouts;
+  document.getElementById('s-xp').textContent      = U.points;
+  document.getElementById('hero-name').innerHTML   = (U.name||'Champion').toUpperCase().split(' ')[0]+' <span>💪</span>';
+
+  let li=0;
+  for(let i=LEVELS.length-1;i>=0;i--){if(U.points>=LEVELS[i].x){li=i;break;}}
+  const nx=LEVELS[li+1]?LEVELS[li+1].x:LEVELS[li].x, px=LEVELS[li].x;
+  const p=li+1<LEVELS.length?Math.round(((U.points-px)/(nx-px))*100):100;
+  document.getElementById('lvl-name').textContent='Level '+(li+1)+' — '+LEVELS[li].n;
+  document.getElementById('lvl-xp').textContent=U.points+' / '+nx+' XP';
+  document.getElementById('lvl-fill').style.width=p+'%';
+
+  document.getElementById('pg-wk').textContent  = U.workouts;
+  document.getElementById('pg-str').textContent = '🔥 '+U.streak+' day streak';
+  document.getElementById('pg-bst').textContent = U.bestStreak;
+  document.getElementById('pg-rep').textContent = U.totalReps;
+  document.getElementById('pg-cal').textContent = Math.round(U.calories);
+
+  buildWeekChart(); buildBreakdown(); buildBadges();
+  updateHomeTerr(); updateStepUI(U.steps||0);
+}
+
+function buildWeekChart() {
+  const days=['Mo','Tu','We','Th','Fr','Sa','Su'], ti=(new Date().getDay()+6)%7;
+  const data=U.weeklyData||[0,0,0,0,0,0,0], mx=Math.max(...data,1);
+  document.getElementById('week-bars').innerHTML=days.map((d,i)=>{
+    const h=Math.round((data[i]/mx)*62);
+    return `<div class="bw"><div class="bbar${i===ti?' td':''}" style="height:${h}px"></div><div class="blbl">${d}</div></div>`;
+  }).join('');
+}
+
+function buildBreakdown() {
+  const ec=U.exerciseCounts||{};
+  const el=document.getElementById('ex-break');
+  if(!Object.keys(ec).length){el.innerHTML='<p style="font-size:.76rem;color:var(--muted)">No exercises yet.</p>';return;}
+  el.innerHTML=Object.entries(ec).sort((a,b)=>b[1]-a[1]).map(([id,reps])=>{
+    const ex=EXERCISES.find(e=>e.id===id);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem .8rem;background:var(--card);border:1px solid var(--border);border-radius:9px;margin-bottom:.4rem;">
+      <span>${ex?ex.ic:''} ${ex?ex.n:id}</span>
+      <span style="font-family:var(--fm);font-size:.76rem;color:var(--a2)">${reps} reps</span></div>`;
+  }).join('');
+}
+
+function buildBadges() {
+  const html=BADGES.map(b=>{
+    const ok=b.r(U);
+    return `<div class="bdg ${ok?'ok':'locked'}"><div class="bi">${b.ic}</div><div class="bn">${b.n}</div><div class="bd">${b.d}</div></div>`;
+  }).join('');
+  ['badges-home','badges-prog'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML=html;});
+}
+
+/* ── PERSONALIZATION ────────────────────────── */
+function selOpt(type,val,el) {
+  const grp=type==='goal'?'#goal-opts':'#lvl-opts';
+  document.querySelectorAll(grp+' .pl-opt').forEach(o=>o.classList.remove('on'));
+  el.classList.add('on');
+  if(type==='goal') selGoal=val; else selLevel=val;
+}
+
+function restoreSel(grp,val) {
+  document.querySelectorAll(grp+' .pl-opt').forEach(o=>{
+    const oc=o.getAttribute('onclick')||'';
+    if(oc.includes("'"+val+"'")) o.classList.add('on'); else o.classList.remove('on');
+  });
+}
+
+async function genPlan() {
+  const plan=(PLANS[selGoal]||PLANS.general)[selLevel]||PLANS.general.beginner;
+  const el=document.getElementById('gen-plan');
+  el.innerHTML=`<h4>YOUR CUSTOM PLAN</h4><div style="color:var(--muted);font-size:.7rem;margin-bottom:.65rem">${selGoal.replace('_',' ').toUpperCase()} · ${selLevel.toUpperCase()}</div>`+
+    plan.map(d=>`<div style="padding:.3rem 0;border-bottom:1px solid var(--border);font-size:.82rem">📅 ${d}</div>`).join('');
+  el.classList.add('on');
+  U.goal=selGoal; U.fitnessLevel=selLevel;
+  toast('✅ Plan generated!'); await saveU();
+}
+
+function applyTog(type, on) {
+  const tr=document.getElementById('trt-'+type), th=document.getElementById('tth-'+type), cb=document.getElementById('rem-'+type);
+  if(!tr||!th||!cb)return; cb.checked=on;
+  if(on){tr.style.background='rgba(232,255,71,.18)';tr.style.borderColor='var(--accent)';th.style.background='var(--accent)';th.style.transform='translateX(20px)';}
+  else  {tr.style.background='var(--bg3)';tr.style.borderColor='var(--border2)';th.style.background='var(--muted)';th.style.transform='translateX(0)';}
+}
+
+async function togReminder(type) {
+  const on=document.getElementById('rem-'+type).checked;
+  applyTog(type,on);
+  U.reminders=U.reminders||{}; U.reminders[type]=on;
+  toast(on?'🔔 Reminder enabled':'🔕 Reminder off'); await saveU();
+}
+
+/* ── MODALS ─────────────────────────────────── */
+function openMod(id)  { document.getElementById(id).classList.add('open'); }
+function closeMod(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ── TOAST ──────────────────────────────────── */
+let toastTimer=null;
+function toast(msg){
+  const e=document.getElementById('toast'); e.textContent=msg; e.classList.add('on');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>e.classList.remove('on'),3000);
+}
+
+/* ── HELPERS ────────────────────────────────── */
+function yyyymmdd(offsetDays=0) {
+  const d=new Date(Date.now()+offsetDays*86400000);
+  return d.toISOString().split('T')[0];
+}
+
+function uidColor(uid) {
+  let h=5381;
+  for(let i=0;i<uid.length;i++) h=((h<<5)+h)+uid.charCodeAt(i);
+  return PLAYER_COLORS[Math.abs(h)%PLAYER_COLORS.length];
+}
+
+/* ── KEYBOARD ───────────────────────────────── */
+document.addEventListener('keydown', e => {
+  if (e.key!=='Enter') return;
+  if (document.getElementById('fp-login').classList.contains('on'))  doLogin();
+  if (document.getElementById('fp-signup').classList.contains('on')) doSignup();
+  if (document.getElementById('fp-forgot').classList.contains('on')) doForgotPw();
+});
+</script>
+</body>
+</html>
